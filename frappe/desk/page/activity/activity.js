@@ -12,17 +12,23 @@ frappe.pages['activity'].on_page_load = function(wrapper) {
 	});
 
 	me.page = wrapper.page;
-
 	me.page.set_title(__("Activity"));
 
 	frappe.model.with_doctype("Communication", function() {
-		me.page.list = new frappe.ui.Listing({
+		me.page.list = new frappe.ui.BaseList({
 			hide_refresh: true,
 			page: me.page,
 			method: 'frappe.desk.page.activity.activity.get_feed',
 			parent: $("<div></div>").appendTo(me.page.main),
-			render_row: function(row, data) {
-				new frappe.activity.Feed(row, data);
+			render_view: function (values) {
+				var me = this;
+				wrapper = me.page.main.find(".result-list").get(0)
+				values.map(function (value) {
+					var row = $('<div class="list-row">')
+						.data("data", value)
+						.appendTo($(wrapper)).get(0);
+					new frappe.activity.Feed(row, value);
+				});
 			},
 			show_filters: true,
 			doctype: "Communication",
@@ -69,8 +75,16 @@ frappe.pages['activity'].on_page_load = function(wrapper) {
 	if(frappe.boot.user.can_get_report.indexOf("Feed")!=-1) {
 		this.page.add_menu_item(__('Build Report'), function() {
 			frappe.set_route('Report', "Feed");
-		}, 'icon-th')
+		}, 'fa fa-th')
 	}
+
+	this.page.add_menu_item(__('Authentication Log'), function() {
+		frappe.route_options = {
+			"user": user
+		}
+
+		frappe.set_route('Report', "Authentication Log");
+	}, 'fa fa-th')
 
 	this.page.add_menu_item(__('Show Likes'), function() {
 		frappe.route_options = {
@@ -120,7 +134,7 @@ frappe.activity.Feed = Class.extend({
 		data.by = frappe.user.full_name(data.owner);
 		data.avatar = frappe.avatar(data.owner);
 
-		data.icon = "icon-flag";
+		data.icon = "fa fa-flag";
 
 		// color for comment
 		data.add_class = {
@@ -157,7 +171,9 @@ frappe.activity.Feed = Class.extend({
 
 frappe.activity.render_heatmap = function(page) {
 	var me = this;
-	$('<div class="heatmap"></div><hr style="margin-bottom: 0px;">').prependTo(page.main);
+	$('<div class="heatmap-container" style="text-align:center">\
+		<div class="heatmap" style="display:inline-block;"></div></div>\
+		<hr style="margin-bottom: 0px;">').prependTo(page.main);
 
 	frappe.call({
 		method: "frappe.desk.page.activity.activity.get_heatmap_data",

@@ -25,12 +25,14 @@ frappe.email_alert = {
 					get_select_options(d) : null; }));
 
 			var email_fields = $.map(fields,
-				function(d) { return d.options == "Email" ?
+				function(d) { return (d.options == "Email" ||
+					(d.options=='User' && d.fieldtype=='Link')) ?
 					get_select_options(d) : null; });
 
 			// set email recipient options
 			frappe.meta.get_docfield("Email Alert Recipient", "email_by_document_field",
-				frm.doc.name).options = ["owner"].concat(email_fields);
+				// set first option as blank to allow email alert not to be defaulted to the owner
+				frm.doc.name).options = [""].concat(["owner"].concat(email_fields));
 
 		});
 	}
@@ -48,6 +50,7 @@ frappe.ui.form.on("Email Alert", {
 	},
 	refresh: function(frm) {
 		frappe.email_alert.setup_fieldname_select(frm);
+		frm.get_field("is_standard").toggle(frappe.boot.developer_mode);
 		frm.trigger('event');
 	},
 	document_type: function(frm) {

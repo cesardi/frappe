@@ -67,6 +67,12 @@
                 </div>
                 <div class="checkbox">
                     <label>
+                        <input type="checkbox" name="update_only">
+                            {%= __("Update only, do not insert new records.") %}
+                    </label>
+                </div>
+                <div class="checkbox">
+                    <label>
                         <input type="checkbox" name="submit_after_import">
                             {%= __("Submit after importing.") %}
                     </label>
@@ -75,6 +81,12 @@
                     <label>
                         <input type="checkbox" name="ignore_encoding_errors">
                             {%= __("Ignore encoding errors.") %}
+                    </label>
+                </div>
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox" name="no_email" checked>
+                            {%= __("Do not send Emails.") %}
                     </label>
                 </div>
                 <p>

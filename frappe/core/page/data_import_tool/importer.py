@@ -1,7 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
 
 import frappe, json
 import frappe.permissions
@@ -16,19 +16,26 @@ from frappe.utils import cint, cstr, flt, getdate, get_datetime
 from frappe.core.page.data_import_tool.data_import_tool import get_data_keys
 
 @frappe.whitelist()
-def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, overwrite=None,
-	ignore_links=False, pre_process=None, via_console=False):
+def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, no_email=True, overwrite=None,
+	update_only = None, ignore_links=False, pre_process=None, via_console=False):
 	"""upload data"""
-	frappe.flags.mute_emails = True
+
 	frappe.flags.in_import = True
 
 	# extra input params
 	params = json.loads(frappe.form_dict.get("params") or '{}')
 
+
 	if params.get("submit_after_import"):
 		submit_after_import = True
 	if params.get("ignore_encoding_errors"):
 		ignore_encoding_errors = True
+	if not params.get("no_email"):
+		no_email = False
+	if params.get('update_only'):
+		update_only = True
+
+	frappe.flags.mute_emails = no_email
 
 	from frappe.utils.csvutils import read_csv_content_from_uploaded_file
 
@@ -81,30 +88,26 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 		dt = None
 		for i, d in enumerate(doctype_row[1:]):
 			if d not in ("~", "-"):
-				if d: # value in doctype_row
-					if doctype_row[i]==dt:
-						# prev column is doctype (in case of parentfield)
-						doctype_parentfield[dt] = doctype_row[i+1]
-					else:
-						dt = d
-						doctypes.append(d)
-						column_idx_to_fieldname[dt] = {}
-						column_idx_to_fieldtype[dt] = {}
+				if d and doctype_row[i] in (None, '' ,'~', '-', 'DocType:'):
+					dt, parentfield = d, doctype_row[i+2] or None
+					doctypes.append((dt, parentfield))
+					column_idx_to_fieldname[(dt, parentfield)] = {}
+					column_idx_to_fieldtype[(dt, parentfield)] = {}
 				if dt:
-					column_idx_to_fieldname[dt][i+1] = rows[row_idx + 2][i+1]
-					column_idx_to_fieldtype[dt][i+1] = rows[row_idx + 4][i+1]
+					column_idx_to_fieldname[(dt, parentfield)][i+1] = rows[row_idx + 2][i+1]
+					column_idx_to_fieldtype[(dt, parentfield)][i+1] = rows[row_idx + 4][i+1]
 
 	def get_doc(start_idx):
 		if doctypes:
 			doc = {}
 			for idx in xrange(start_idx, len(rows)):
 				if (not doc) or main_doc_empty(rows[idx]):
-					for dt in doctypes:
+					for dt, parentfield in doctypes:
 						d = {}
-						for column_idx in column_idx_to_fieldname[dt]:
+						for column_idx in column_idx_to_fieldname[(dt, parentfield)]:
 							try:
-								fieldname = column_idx_to_fieldname[dt][column_idx]
-								fieldtype = column_idx_to_fieldtype[dt][column_idx]
+								fieldname = column_idx_to_fieldname[(dt, parentfield)][column_idx]
+								fieldtype = column_idx_to_fieldtype[(dt, parentfield)][column_idx]
 
 								d[fieldname] = rows[idx][column_idx]
 								if fieldtype in ("Int", "Check"):
@@ -115,7 +118,10 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 									d[fieldname] = getdate(parse_date(d[fieldname])) if d[fieldname] else None
 								elif fieldtype == "Datetime":
 									if d[fieldname]:
-										_date, _time = d[fieldname].split()
+										if " " in d[fieldname]:
+											_date, _time = d[fieldname].split()
+										else:
+											_date, _time = d[fieldname], '00:00:00'
 										_date = parse_date(d[fieldname])
 										d[fieldname] = get_datetime(_date + " " + _time)
 									else:
@@ -135,7 +141,7 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 								if not overwrite:
 									d['parent'] = doc["name"]
 								d['parenttype'] = doctype
-								d['parentfield'] = doctype_parentfield[dt]
+								d['parentfield'] = parentfield
 								doc.setdefault(d['parentfield'], []).append(d)
 				else:
 					break
@@ -167,7 +173,6 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 	doctype = get_header_row(get_data_keys_definition().main_table)[1]
 	columns = filter_empty_columns(get_header_row(get_data_keys_definition().columns)[1:])
 	doctypes = []
-	doctype_parentfield = {}
 	column_idx_to_fieldname = {}
 	column_idx_to_fieldtype = {}
 
@@ -192,6 +197,7 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 	if overwrite==None:
 		overwrite = params.get('overwrite')
 
+
 	# delete child rows (if parenttype)
 	parentfield = None
 	if parenttype:
@@ -204,7 +210,7 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 
 	def log(msg):
 		if via_console:
-			print msg.encode('utf-8')
+			print(msg.encode('utf-8'))
 		else:
 			ret.append(msg)
 
@@ -251,11 +257,14 @@ def upload(rows = None, submit_after_import=None, ignore_encoding_errors=False, 
 					log('Updated row (#%d) %s' % (row_idx + 1, as_link(original.doctype, original.name)))
 					doc = original
 				else:
-					doc = frappe.get_doc(doc)
-					prepare_for_insert(doc)
-					doc.flags.ignore_links = ignore_links
-					doc.insert()
-					log('Inserted row (#%d) %s' % (row_idx + 1, as_link(doc.doctype, doc.name)))
+					if not update_only:
+						doc = frappe.get_doc(doc)
+						prepare_for_insert(doc)
+						doc.flags.ignore_links = ignore_links
+						doc.insert()
+						log('Inserted row (#%d) %s' % (row_idx + 1, as_link(doc.doctype, doc.name)))
+					else:
+						log('Ignored row (#%d) %s' % (row_idx + 1, row[1]))
 				if submit_after_import:
 					doc.submit()
 					log('Submitted row (#%d) %s' % (row_idx + 1, as_link(doc.doctype, doc.name)))

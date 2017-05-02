@@ -1,7 +1,8 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, print_function
+import json
 """
 Server side functions for tagging.
 
@@ -48,18 +49,17 @@ def remove_tag(tag, dt, dn):
 
 
 @frappe.whitelist()
-def get_tags(doctype, txt):
-	tags = []
+def get_tags(doctype, txt, cat_tags):
+	tags = json.loads(cat_tags)
 	try:
-		for _user_tags in frappe.db.sql_list("""select `_user_tags`
+		for _user_tags in frappe.db.sql_list("""select DISTINCT `_user_tags`
 			from `tab{0}`
 			where _user_tags like '%{1}%'
-			limit 1""".format(frappe.db.escape(doctype), frappe.db.escape(txt))):
-			tags.extend(_user_tags.split(","))
+			limit 50""".format(frappe.db.escape(doctype), frappe.db.escape(txt))):
+			tags.extend(_user_tags[1:].split(","))
 	except Exception, e:
 		if e.args[0]!=1054: raise
-
-	return sorted(filter(lambda t: t and txt in t, list(set(tags))))
+	return sorted(filter(lambda t: t and txt.lower() in t.lower(), list(set(tags))))
 
 class DocTags:
 	"""Tags for a particular doctype"""
@@ -84,7 +84,8 @@ class DocTags:
 	def remove(self, dn, tag):
 		"""remove a user tag"""
 		tl = self.get_tags(dn).split(',')
-		self.update(dn, filter(lambda x:x!=tag, tl))
+		print(tag, filter(lambda x:x!=tag, tl))
+		self.update(dn, filter(lambda x:x.lower()!=tag.lower(), tl))
 
 	def remove_all(self, dn):
 		"""remove all user tags (call before delete)"""

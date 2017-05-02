@@ -38,3 +38,7 @@ zxcvbn
 psutil
 unittest-xml-reporting
 xlwt
+oauthlib
+PyJWT
+pypdf
+openpyxl

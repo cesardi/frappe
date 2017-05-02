@@ -24,10 +24,14 @@ frappe.avatar = function(user, css_class, title) {
 	}
 
 	if(user_info.image) {
+
+		var image = (window.cordova && user_info.image.indexOf('http')===-1) ?
+			frappe.base_url + user_info.image : user_info.image;
+
 		return repl('<span class="avatar %(css_class)s" title="%(title)s">\
 			<span class="avatar-frame" style="background-image: url(%(image)s)"\
 			 title="%(title)s"></span></span>', {
-				image: user_info.image,
+				image: image,
 				title: title,
 				abbr: user_info.abbr,
 				css_class: css_class
@@ -50,12 +54,12 @@ frappe.avatar = function(user, css_class, title) {
 
 frappe.get_palette = function(txt) {
 	return '#fafbfc';
-	//return '#8D99A6';
-	if(txt==='Administrator') return '#36414C';
-	// get color palette selection from md5 hash
-	var idx = cint((parseInt(md5(txt).substr(4,2), 16) + 1) / 5.33);
-	if(idx > 47) idx = 47;
-	return frappe.palette[idx][0]
+	// //return '#8D99A6';
+	// if(txt==='Administrator') return '#36414C';
+	// // get color palette selection from md5 hash
+	// var idx = cint((parseInt(md5(txt).substr(4,2), 16) + 1) / 5.33);
+	// if(idx > 47) idx = 47;
+	// return frappe.palette[idx][0]
 }
 
 frappe.get_abbr = function(txt, max_length) {

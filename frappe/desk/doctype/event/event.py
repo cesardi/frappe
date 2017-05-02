@@ -4,7 +4,8 @@
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import getdate, cint, add_months, date_diff, add_days, nowdate, get_datetime_str, cstr
+from frappe.utils import (getdate, cint, add_months, date_diff, add_days,
+	nowdate, get_datetime_str, cstr, get_datetime, now_datetime)
 from frappe.model.document import Document
 from frappe.utils.user import get_enabled_system_users
 
@@ -12,33 +13,28 @@ weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 
 class Event(Document):
 	def validate(self):
-		if self.starts_on and self.ends_on and self.starts_on > self.ends_on:
+		if not self.starts_on:
+			self.starts_on = now_datetime()
+
+		if self.starts_on and self.ends_on and get_datetime(self.starts_on) > get_datetime(self.ends_on):
 			frappe.msgprint(frappe._("Event end must be after start"), raise_exception=True)
 
 		if self.starts_on == self.ends_on:
 			# this scenario doesn't make sense i.e. it starts and ends at the same second!
 			self.ends_on = None
 
-		if self.starts_on and self.ends_on and int(date_diff(self.ends_on.split(" ")[0], self.starts_on.split(" ")[0])) > 0 \
-			and self.repeat_on == "Every Day":
+		if getdate(self.starts_on) == getdate(self.ends_on) and self.repeat_on == "Every Day":
 			frappe.msgprint(frappe._("Every day events should finish on the same day."), raise_exception=True)
 
 def get_permission_query_conditions(user):
 	if not user: user = frappe.session.user
-	return """(tabEvent.event_type='Public' or tabEvent.owner='%(user)s'
-		or exists(select * from `tabEvent Role` where
-			`tabEvent Role`.parent=tabEvent.name
-			and `tabEvent Role`.role in ('%(roles)s')))
-		""" % {
+	return """(tabEvent.event_type='Public' or tabEvent.owner='%(user)s')""" % {
 			"user": frappe.db.escape(user),
 			"roles": "', '".join([frappe.db.escape(r) for r in frappe.get_roles(user)])
 		}
 
 def has_permission(doc, user):
 	if doc.event_type=="Public" or doc.owner==user:
-		return True
-
-	if doc.get("roles", {"role":("in", frappe.get_roles(user))}):
 		return True
 
 	return False
@@ -69,7 +65,7 @@ def get_events(start, end, user=None, for_reminder=False):
 	if not user:
 		user = frappe.session.user
 	roles = frappe.get_roles(user)
-	events = frappe.db.sql("""select name, subject, description,
+	events = frappe.db.sql("""select name, subject, description, color,
 		starts_on, ends_on, owner, all_day, event_type, repeat_this_event, repeat_on,repeat_till,
 		monday, tuesday, wednesday, thursday, friday, saturday, sunday
 		from tabEvent where ((
@@ -84,10 +80,7 @@ def get_events(start, end, user=None, for_reminder=False):
 		and (event_type='Public' or owner=%(user)s
 		or exists(select name from `tabDocShare` where
 			tabDocShare.share_doctype="Event" and `tabDocShare`.share_name=tabEvent.name
-			and tabDocShare.user=%(user)s)
-		or exists(select * from `tabEvent Role` where
-			`tabEvent Role`.parent=tabEvent.name
-			and `tabEvent Role`.role in ({roles})))
+			and tabDocShare.user=%(user)s))
 		order by starts_on""".format(
 			reminder_condition="and ifnull(send_reminder,0)=1" if for_reminder else "",
 			roles=", ".join('"{}"'.format(frappe.db.escape(r)) for r in roles)

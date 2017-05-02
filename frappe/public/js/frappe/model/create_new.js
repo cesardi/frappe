@@ -60,7 +60,8 @@ $.extend(frappe.model, {
 		// set route options
 		if(frappe.route_options && !doc.parent) {
 			$.each(frappe.route_options, function(fieldname, value) {
-				if(frappe.meta.has_field(doctype, fieldname)) {
+				var df = frappe.meta.has_field(doctype, fieldname);
+				if(df && in_list(['Link', 'Data', 'Select'], df.fieldtype) && !df.no_copy) {
 					doc[fieldname]=value;
 				}
 			});
@@ -122,6 +123,7 @@ $.extend(frappe.model, {
 	},
 
 	get_default_value: function(df, doc, parent_doc) {
+		var user_default = "";
 		var user_permissions = frappe.defaults.get_user_permissions();
 		var meta = frappe.get_meta(doc.doctype);
 		var has_user_permissions = (df.fieldtype==="Link" && user_permissions
@@ -136,12 +138,19 @@ $.extend(frappe.model, {
 				return user_permissions[df.options][0];
 			}
 
-			// 2 - look in user defaults
-			var user_default = frappe.defaults.get_user_default(df.fieldname);
-			if(!user_default && df.fieldtype==='Link' && frappe.boot.user.last_selected_values) {
+			if(!df.ignore_user_permissions) {
+				// 2 - look in user defaults
+				user_default = frappe.defaults.get_user_default(df.options);
+			}
+
+			if (!user_default) {
+				user_default = frappe.defaults.get_user_default(df.fieldname);
+			}
+
+			if(!user_default && df.remember_last_selected_value && frappe.boot.user.last_selected_values) {
 				user_default = frappe.boot.user.last_selected_values[df.options];
 			}
-			
+
 			var is_allowed_user_default = user_default &&
 				(!has_user_permissions || user_permissions[df.options].indexOf(user_default)!==-1);
 
@@ -154,8 +163,8 @@ $.extend(frappe.model, {
 		// 3 - look in default of docfield
 		if (df['default']) {
 
-			if (df["default"] == "__user" || df["default"] == "user") {
-				return user;
+			if (df["default"] == "__user" || df["default"].toLowerCase() == "user") {
+				return frappe.session.user;
 
 			} else if (df["default"] == "user_fullname") {
 				return user_fullname;
@@ -186,7 +195,6 @@ $.extend(frappe.model, {
 
 		} else if (df.fieldtype=="Time") {
 			return dateutil.now_time();
-
 		}
 	},
 
@@ -275,9 +283,11 @@ $.extend(frappe.model, {
 
 		return frappe.call({
 			type: "POST",
-			method: opts.method,
+			method: 'frappe.model.mapper.make_mapped_doc',
 			args: {
-				"source_name": opts.source_name
+				method: opts.method,
+				source_name: opts.source_name,
+				selected_children: opts.frm.get_selected()
 			},
 			freeze: true,
 			callback: function(r) {
@@ -295,6 +305,7 @@ $.extend(frappe.model, {
 
 frappe.create_routes = {};
 frappe.new_doc = function (doctype, opts) {
+	if(opts && $.isPlainObject(opts)) { frappe.route_options = opts; };
 	frappe.model.with_doctype(doctype, function() {
 		if(frappe.create_routes[doctype]) {
 			frappe.set_route(frappe.create_routes[doctype]);
